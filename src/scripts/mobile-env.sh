@@ -33,10 +33,18 @@ case "$target" in
     sherpa=$workspace/vendor/sherpa-onnx/jniLibs/$abi
     [ -d "$sherpa" ] || { echo "no sherpa-onnx for $target: run scripts/sherpa-mobile.sh $target" >&2; exit 1; }
     echo "export SHERPA_ONNX_LIB_DIR='$sherpa'"
-    # The emulator's x86_64 build: ort publishes no ONNX Runtime for it,
-    # and sherpa-onnx's own (1.27, which serves the API ort asks for) is
-    # beside it, so ort links that one, and the APK carries it with the
-    # rest of the folder.
+
+    # ARMv7 has no prebuilt ONNX Runtime in ort-sys. Use the
+    # Android shared library shipped in sherpa-onnx instead.
+    if [ "$target" = armv7-linux-androideabi ]; then
+      [ -f "$sherpa/libonnxruntime.so" ] || {
+        echo "ONNX Runtime shared library missing: $sherpa/libonnxruntime.so" >&2
+        exit 1
+      }
+      echo "export ORT_LIB_PATH='$sherpa' ORT_PREFER_DYNAMIC_LINK=1"
+    fi
+
+    # Keep the existing x86_64 configuration unchanged.
     if [ "$target" = x86_64-linux-android ]; then
       echo "export ORT_LIB_LOCATION='$sherpa' ORT_PREFER_DYNAMIC_LINK=1"
     fi

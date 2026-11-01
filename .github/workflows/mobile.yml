@@ -3,7 +3,8 @@ name: Build for phones
 # Builds Concat for Android and iOS and uploads one artifact per phone,
 # named like the desktop bundles from build-app.yml:
 #
-#   Android  arm64  -> Concat-<version>-android-arm64.apk
+#   Android  arm64        -> Concat-<version>-android-arm64.apk
+#   Android  armeabi-v7a  -> Concat-<version>-android-armeabi-v7a.apk
 #   iOS      arm64  -> Concat-<version>-ios-arm64.ipa
 #
 # Reusable, the way build-app.yml is: release.yml calls it on every tag,
@@ -30,17 +31,18 @@ name: Build for phones
 # is ad-hoc signed: a tester signs it with their own Apple ID on the way
 # onto a phone (AltStore, Sideloadly, Xcode's Devices window all do this).
 #
-# No phone build passes unless it starts on a phone. The Android app is
-# installed on an emulator of Android 11 (API 30, where #312's preview
-# failed) and of Android 15 (API 35, the SDK the app targets) and started
-# there (scripts/ci/smoke-android.sh). The emulators are x86_64 ones on
+# The Android app's x86_64 CI build is installed on emulators of Android
+# 11 (API 30, where #312's preview failed) and Android 15 (API 35, the SDK
+# the app targets), and started there (scripts/ci/smoke-android.sh). The
+# emulators are x86_64 ones on
 # Linux with KVM: GitHub's arm64 Macs cannot run the emulator at all (no
-# nested virtualisation, so HVF fails with HV_UNSUPPORTED). The APK that
-# ships is arm64 only, and under the ARM translation the x86_64 images
-# carry, ONNX Runtime's CPU detection crashed as the library loaded,
-# before any of the app's code, so it was never tested at all. So the
-# Android job also builds the same source for x86_64, an APK that never
-# leaves the run, and that is the one the emulators start natively. The
+# nested virtualisation, so HVF fails with HV_UNSUPPORTED). The arm64
+# and armeabi-v7a APKs ship; the x86_64 APK is only for CI. Under the ARM
+# translation the x86_64 images carry, ONNX Runtime's CPU detection
+# crashed as the library loaded, before any of the app's code, so the
+# shipped APKs are not smoke-tested by these emulators. The Android job
+# also builds the same source for x86_64, an APK that never leaves the run,
+# and that is the one the emulators start natively. The
 # iPhone is tested the same way through the
 # iOS Simulator, which needs a build of its own for aarch64-apple-ios-sim,
 # made beside the device build and never shipped
@@ -102,15 +104,17 @@ jobs:
     name: Android ${{ matrix.abi }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    # arm64 is the APK that ships. x86_64 is the same source built for CI's
-    # emulators, which run x86_64 and could not start the arm64 one: the
-    # launch check below installs it, and it never leaves the run.
+    # arm64 and armeabi-v7a are the APKs that ship. x86_64 is the same source
+    # built only for CI's emulators, which run x86_64 natively.
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: aarch64-linux-android
             abi: arm64
+            ship: true
+          - target: armv7-linux-androideabi
+            abi: armeabi-v7a
             ship: true
           - target: x86_64-linux-android
             abi: x86_64
@@ -248,7 +252,7 @@ jobs:
       # A phone with 16 KB pages loads none of a library aligned to less,
       # and the build would not say so.
       - name: Every library is aligned for 16 KB pages
-        if: matrix.ship
+        if: matrix.abi == 'arm64'
         run: python3 scripts/ci/check-16k-pages.py src/target/release/apk/Concat.apk
 
       - name: Build log to the summary (failure only)
@@ -277,15 +281,13 @@ jobs:
         with:
           # Concat-* is what a release publishes; the emulator's APK is
           # named so it never is.
-          name: ${{ matrix.ship && 'Concat-android-arm64' || 'smoke-apk-android-x86_64' }}
+          name: ${{ matrix.ship && format('Concat-android-{0}', matrix.abi) || 'smoke-apk-android-x86_64' }}
           path: stage/*
           if-no-files-found: error
 
-  # The x86_64 APK the job above built from the same source, installed and
-  # started on an emulator, which runs it natively: the arm64 one that
-  # ships ran there only through ARM translation, where ONNX Runtime's CPU
-  # detection crashed before any of the app's code, so it was never
-  # tested at all.
+  # The x86_64 APK built from the same source, installed and started on an
+  # emulator, which runs it natively. The shipped arm64 and armeabi-v7a APKs
+  # are not exercised by this emulator job.
   android-smoke:
     name: Android smoke (API ${{ matrix.api }})
     needs: android

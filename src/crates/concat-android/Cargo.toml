@@ -42,7 +42,12 @@ android-build = "0.1"
 [package.metadata.android]
 package = "org.standalones.concat"
 apk_name = "Concat"
-build_targets = ["aarch64-linux-android"]
+# Keep both Android ARM ABIs buildable. The CI workflow selects one target
+# per job; the matching sherpa-onnx ABI is placed in runtime_libs.
+build_targets = [
+    "aarch64-linux-android",
+    "armv7-linux-androideabi",
+]
 runtime_libs = "../../vendor/sherpa-onnx/jniLibs"
 # The launcher icon, at every density Android asks for (48, 72, 96, 144,
 # 192px); rendered from assets/new_concat_logo_512_rounded_light_theme.svg.
